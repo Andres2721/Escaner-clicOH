@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escáner de guías clicOH</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6fa; color: #1a1a1a; }
+    header { background: #1F3864; color: #fff; padding: 14px 16px; font-size: 18px; font-weight: bold; position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; }
+    header .num { background: #fff; color: #1F3864; border-radius: 20px; padding: 4px 12px; font-size: 16px; }
+    main { padding: 16px; max-width: 520px; margin: 0 auto; padding-bottom: 110px; }
+    label { display: block; font-size: 13px; font-weight: bold; margin: 10px 0 4px; }
+    input, select, button { width: 100%; font-size: 16px; padding: 12px; border-radius: 8px; border: 1px solid #c7ccd6; }
+    button { background: #1F3864; color: #fff; border: none; font-weight: bold; cursor: pointer; }
+    button.sec { background: #fff; color: #1F3864; border: 2px solid #1F3864; }
+    button:disabled { opacity: .5; }
+    .card { background: #fff; border-radius: 10px; padding: 14px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    #reader { margin-top: 12px; border-radius: 10px; overflow: hidden; background: #000; }
+    #estado { padding: 12px; border-radius: 8px; margin-top: 12px; font-weight: bold; text-align: center; display: none; }
+    .ok { background: #d9f2e1; color: #11632f; }
+    .dup { background: #fff2cc; color: #7a5b00; }
+    .err { background: #fde2e1; color: #9b1c1c; }
+    ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 320px; overflow-y: auto; }
+    li { padding: 9px 0; border-bottom: 1px solid #eee; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+    li button { width: auto; padding: 4px 10px; font-size: 13px; background: #fde2e1; color: #9b1c1c; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; } .row button { width: auto; }
+    .pie { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; padding: 12px 16px; box-shadow: 0 -2px 8px rgba(0,0,0,.12); }
+    .pie button { max-width: 520px; display: block; margin: 0 auto; font-size: 18px; padding: 16px; background: #11632f; }
+    .vacio { color: #777; font-size: 14px; text-align: center; padding: 10px 0; }
+  </style>
+</head>
+<body>
+<header>Escáner de guías clicOH <span class="num" id="contador">0</span></header>
+<main>
+  <div class="card">
+    <label for="cedula">Cédula del aliado</label>
+    <input id="cedula" inputmode="numeric" placeholder="Ej: 1012345678">
+    <label for="nombre">Nombre del aliado</label>
+    <input id="nombre" placeholder="Nombre y apellido">
+    <label for="point">Point / Ciudad</label>
+    <input id="point" placeholder="Ej: Point Chapinero - Bogotá">
+    <label for="tipo">Tipo de movimiento</label>
+    <select id="tipo">
+      <option>Devolución</option>
+      <option>Entrega al Point</option>
+      <option>Recolección</option>
+    </select>
+  </div>
+
+  <button id="btnCam" style="margin-top:14px;font-size:18px;padding:16px">📷 Iniciar escáner</button>
+  <div id="reader"></div>
+  <div id="estado"></div>
+
+  <div class="card">
+    <label for="manual">¿No lee el código? Escríbelo aquí</label>
+    <div class="row">
+      <input id="manual" placeholder="Número de guía">
+      <button id="btnManual">Agregar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Guías escaneadas</strong>
+      <button id="btnLimpiar" class="sec" style="width:auto;padding:6px 12px;font-size:13px">Vaciar lista</button>
+    </div>
+    <ul id="lista"></ul>
+  </div>
+</main>
+
+<div class="pie"><button id="btnCargar">⬆️ Cargar al Drive (0)</button></div>
+
+<script>
+  // ⚠️ URL de la aplicación web de Apps Script (termina en /exec)
+  const URL_DRIVE = 'https://script.google.com/macros/s/AKfycbzNByRUWn1B9vepbYSYaXcicGC7i36A1PzN1wQoi8jcuA-YUnqvPr-L1fhIcQIJieMK/exec';
+
+  const $ = id => document.getElementById(id);
+  const leer = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; } };
+  const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+  ['cedula', 'nombre', 'point', 'tipo'].forEach(c => {
+    const v = leer('clicoh_' + c, null); if (v) $(c).value = v;
+    $(c).addEventListener('change', () => guardar('clicoh_' + c, $(c).value));
+  });
+
+  // Lista pendiente: se guarda en el celular hasta que se cargue al Drive
+  let pendientes = [];
+  try { pendientes = JSON.parse(leer('clicoh_pendientes', '[]')) || []; } catch (e) { pendientes = []; }
+  let escaner = null, activo = false, ultimo = '', ultimoT = 0, cargando = false;
+
+  function aviso(txt, clase) { const e = $('estado'); e.textContent = txt; e.className = clase; e.style.display = 'block'; }
+  function pitido(ok) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(); o.frequency.value = ok ? 1000 : 260;
+      o.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + (ok ? 0.12 : 0.3));
+    } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate(ok ? 70 : [60, 60, 60]);
+  }
+
+  function pintar() {
+    guardar('clicoh_pendientes', JSON.stringify(pendientes));
+    $('contador').textContent = pendientes.length;
+    $('btnCargar').textContent = '⬆️ Cargar al Drive (' + pendientes.length + ')';
+    $('btnCargar').disabled = !pendientes.length || cargando;
+    const ul = $('lista'); ul.innerHTML = '';
+    if (!pendientes.length) { ul.innerHTML = '<li class="vacio">Aún no hay guías escaneadas</li>'; return; }
+    pendientes.slice().reverse().forEach(p => {
+      const li = document.createElement('li');
+      const s = document.createElement('span'); s.textContent = p.codigo;
+      const b = document.createElement('button'); b.textContent = 'Quitar';
+      b.onclick = () => { pendientes = pendientes.filter(x => x.codigo !== p.codigo); pintar(); };
+      li.append(s, b); ul.append(li);
+    });
+  }
+
+  function agregar(codigo) {
+    codigo = String(codigo).trim();
+    if (!codigo) return;
+    const ahora = Date.now();
+    if (codigo === ultimo && ahora - ultimoT < 2500) return; // misma guía frente a la cámara
+    ultimo = codigo; ultimoT = ahora;
+    if (pendientes.length && pendientes[pendientes.length - 1].codigo === codigo) return; // sigue frente a la cámara
+    if (pendientes.some(p => p.codigo === codigo)) { aviso('⚠️ ' + codigo + ' ya está en la lista', 'dup'); pitido(false); return; }
+    pendientes.push({ codigo, hora: new Date().toISOString() });
+    aviso('✅ ' + codigo + ' agregada (' + pendientes.length + ')', 'ok'); pitido(true);
+    pintar();
+  }
+
+  $('btnCam').addEventListener('click', async () => {
+    if (activo) {
+      await escaner.stop(); activo = false; $('btnCam').textContent = '📷 Iniciar escáner'; $('btnCam').className = '';
+      return;
+    }
+    escaner = escaner || new Html5Qrcode('reader');
+    try {
+      await escaner.start({ facingMode: 'environment' }, { fps: 12, qrbox: { width: 260, height: 170 } }, txt => agregar(txt));
+      activo = true; $('btnCam').textContent = '⏹ Detener escáner'; $('btnCam').className = 'sec';
+    } catch (e) {
+      aviso('No se pudo abrir la cámara. Revisa el permiso de cámara del navegador para esta página.', 'err');
+    }
+  });
+
+  $('btnManual').addEventListener('click', () => { agregar($('manual').value); $('manual').value = ''; $('manual').focus(); });
+  $('manual').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btnManual').click(); } });
+  $('btnLimpiar').addEventListener('click', () => {
+    if (pendientes.length && confirm('¿Borrar las ' + pendientes.length + ' guías de la lista sin cargarlas?')) { pendientes = []; pintar(); }
+  });
+
+  $('btnCargar').addEventListener('click', async () => {
+    const cedula = $('cedula').value.trim();
+    if (!cedula) { aviso('Escribe la cédula del aliado antes de cargar', 'err'); pitido(false); return; }
+    if (!pendientes.length) return;
+    cargando = true; pintar();
+    aviso('Cargando ' + pendientes.length + ' guías al Drive…', 'dup');
+    const enviadas = pendientes.map(p => p.codigo);
+    try {
+      const resp = await fetch(URL_DRIVE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ cedula, nombre: $('nombre').value.trim(), point: $('point').value.trim(), tipo: $('tipo').value, codigos: enviadas })
+      });
+      const r = await resp.json();
+      if (!r.ok) throw new Error(r.msg || 'No se pudo cargar');
+      pendientes = pendientes.filter(p => !enviadas.includes(p.codigo));
+      let msg = '✅ Cargadas ' + r.nuevos + ' guías al Drive';
+      if (r.duplicados && r.duplicados.length) msg += '. ' + r.duplicados.length + ' ya estaban registradas hoy: ' + r.duplicados.join(', ');
+      aviso(msg, r.duplicados && r.duplicados.length ? 'dup' : 'ok'); pitido(true);
+    } catch (e) {
+      aviso('❌ No se pudo cargar (' + e.message + '). Las guías siguen guardadas en el celular; intenta de nuevo con señal.', 'err'); pitido(false);
+    }
+    cargando = false; pintar();
+  });
+
+  pintar();
+  if (pendientes.length) aviso('Tienes ' + pendientes.length + ' guías pendientes por cargar', 'dup');
+</script>
+</body>
+</html>
