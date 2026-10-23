@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Escáner de guías clicOH</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; margin: 0; background: #f4f6fa; color: #1a1a1a; }
@@ -15,6 +16,7 @@
     input, select, button { width: 100%; font-size: 16px; padding: 12px; border-radius: 8px; border: 1px solid #c7ccd6; }
     button { background: #1F3864; color: #fff; border: none; font-weight: bold; cursor: pointer; }
     button.sec { background: #fff; color: #1F3864; border: 2px solid #1F3864; }
+    button.verde { background: #11632f; }
     button:disabled { opacity: .5; }
     .card { background: #fff; border-radius: 10px; padding: 14px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
     #reader { margin-top: 12px; border-radius: 10px; overflow: hidden; background: #000; }
@@ -30,6 +32,11 @@
     .pie { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; padding: 12px 16px; box-shadow: 0 -2px 8px rgba(0,0,0,.12); }
     .pie button { max-width: 520px; display: block; margin: 0 auto; font-size: 18px; padding: 16px; background: #11632f; }
     .vacio { color: #777; font-size: 14px; text-align: center; padding: 10px 0; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+    .modal .caja { background: #fff; border-radius: 14px; padding: 20px; max-width: 420px; width: 100%; text-align: center; max-height: 95vh; overflow-y: auto; }
+    .grande { font-size: 44px; font-weight: bold; color: #1F3864; margin: 6px 0; }
+    #qrEntrega img, #qrEntrega svg { width: 240px; height: 240px; }
+    .id { font-family: monospace; font-size: 15px; color: #555; }
   </style>
 </head>
 <body>
@@ -69,13 +76,47 @@
     </div>
     <ul id="lista"></ul>
   </div>
+
+  <div class="card" id="cardResumen">
+    <strong id="resTitulo">📋 Mi resumen de hoy</strong>
+    <ul id="resLista"></ul>
+    <div id="resTotal" style="margin-top:10px;font-size:17px;font-weight:bold;color:#11632f"></div>
+    <div id="resPend" style="margin-top:6px;font-size:14px;color:#7a5b00"></div>
+    <button id="btnWhats" class="sec" style="margin-top:12px">💬 Enviar resumen por WhatsApp</button>
+  </div>
+
+  <button id="btnVerQR" class="sec" style="margin-top:14px;display:none">🔳 Ver QR de mi última entrega</button>
 </main>
 
 <div class="pie"><button id="btnCargar">⬆️ Cargar al Drive (0)</button></div>
 
+<div class="modal" id="modalQR"><div class="caja">
+  <div style="font-weight:bold;color:#11632f">✅ Guías cargadas</div>
+  <div>Muestra este código a quien recibe</div>
+  <div class="grande" id="qrCantidad">0</div>
+  <div id="qrTexto" style="margin-bottom:8px"></div>
+  <div id="qrEntrega"></div>
+  <div class="id" id="qrId"></div>
+  <button id="btnCerrarQR" class="sec" style="margin-top:14px">Cerrar</button>
+</div></div>
+
+<div class="modal" id="modalRecibir"><div class="caja">
+  <div style="font-weight:bold;font-size:18px">📦 Confirmar recibido</div>
+  <div id="recInfo" style="margin-top:8px">Consultando entrega…</div>
+  <div class="grande" id="recCantidad"></div>
+  <div id="recForm" style="display:none;text-align:left">
+    <label for="receptor">Nombre de quien recibe</label>
+    <input id="receptor" placeholder="Tu nombre">
+    <button id="btnConfirmar" class="verde" style="margin-top:12px;font-size:18px;padding:16px">✔️ Confirmar recibido</button>
+  </div>
+  <div id="recMsg" style="margin-top:10px;font-weight:bold"></div>
+  <button id="btnCerrarRec" class="sec" style="margin-top:12px">Cerrar</button>
+</div></div>
+
 <script>
-  // ⚠️ URL de la aplicación web de Apps Script (termina en /exec)
   const URL_DRIVE = 'https://script.google.com/macros/s/AKfycbzNByRUWn1B9vepbYSYaXcicGC7i36A1PzN1wQoi8jcuA-YUnqvPr-L1fhIcQIJieMK/exec';
+  const REGLA_GUIA = /^\d{13}$/; // etiqueta clicOH: QR con 13 números
+  const PREFIJO_ENTREGA = 'CLICOH-ENTREGA:';
 
   const $ = id => document.getElementById(id);
   const leer = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; } };
@@ -85,11 +126,11 @@
     const v = leer('clicoh_' + c, null); if (v) $(c).value = v;
     $(c).addEventListener('change', () => guardar('clicoh_' + c, $(c).value));
   });
+  $('receptor').value = leer('clicoh_receptor', '');
 
-  // Lista pendiente: se guarda en el celular hasta que se cargue al Drive
   let pendientes = [];
   try { pendientes = JSON.parse(leer('clicoh_pendientes', '[]')) || []; } catch (e) { pendientes = []; }
-  let escaner = null, activo = false, ultimo = '', ultimoT = 0, cargando = false;
+  let escaner = null, activo = false, ultimo = '', ultimoT = 0, cargando = false, pausado = false, entregaActual = null;
 
   function aviso(txt, clase) { const e = $('estado'); e.textContent = txt; e.className = clase; e.style.display = 'block'; }
   function pitido(ok) {
@@ -101,11 +142,72 @@
     if (navigator.vibrate) navigator.vibrate(ok ? 70 : [60, 60, 60]);
   }
 
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const hoyClave = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+  const hoyTexto = () => { const d = new Date(); return d.getDate() + ' de ' + MESES[d.getMonth()]; };
+
+  function cargadas() {
+    try { const m = JSON.parse(leer('clicoh_cargadas', '{}')) || {}; return m.dia === hoyClave() ? (m.codigos || {}) : {}; }
+    catch (e) { return {}; }
+  }
+  function marcarCargadas(lista) {
+    const c = cargadas(), ahora = Date.now();
+    lista.forEach(x => { c[x] = ahora; });
+    guardar('clicoh_cargadas', JSON.stringify({ dia: hoyClave(), codigos: c }));
+  }
+
+  function historial() { try { return JSON.parse(leer('clicoh_historial', '[]')) || []; } catch (e) { return []; } }
+  function registrarHistorial(point, tipo, cantidad) {
+    const limite = Date.now() - 7 * 864e5;
+    const h = historial().filter(x => x.t > limite);
+    h.push({ dia: hoyClave(), t: Date.now(), point: point || 'Sin Point', tipo, cantidad });
+    guardar('clicoh_historial', JSON.stringify(h));
+  }
+  function resumenHoy() {
+    const hoy = historial().filter(x => x.dia === hoyClave());
+    const porPoint = {};
+    hoy.forEach(x => { porPoint[x.point] = (porPoint[x.point] || 0) + x.cantidad; });
+    const total = hoy.reduce((s, x) => s + x.cantidad, 0);
+    const soloDev = hoy.length && hoy.every(x => x.tipo === 'Devolución');
+    return { porPoint, total, palabra: soloDev || !hoy.length ? 'devoluciones' : 'guías' };
+  }
+  function pintarResumen() {
+    const r = resumenHoy();
+    const nombre = $('nombre').value.trim();
+    $('resTitulo').textContent = '📋 Mi resumen de hoy, ' + hoyTexto();
+    const ul = $('resLista'); ul.innerHTML = '';
+    const puntos = Object.keys(r.porPoint);
+    if (!puntos.length) {
+      ul.innerHTML = '<li class="vacio">Aún no has cargado guías hoy</li>';
+    } else {
+      puntos.forEach(p => {
+        const li = document.createElement('li');
+        const a = document.createElement('span'); a.textContent = p;
+        const b = document.createElement('strong'); b.textContent = r.porPoint[p];
+        li.append(a, b); ul.append(li);
+      });
+    }
+    $('resTotal').textContent = 'Total ' + r.palabra + ' recogidas hoy ' + hoyTexto() + ': ' + r.total;
+    $('resPend').textContent = pendientes.length ? '⚠️ Tienes ' + pendientes.length + ' guías escaneadas sin cargar' : '';
+    $('btnWhats').style.display = puntos.length ? 'block' : 'none';
+    return { r, nombre, puntos };
+  }
+  $('btnWhats').onclick = () => {
+    const { r, nombre, puntos } = pintarResumen();
+    let t = 'Resumen ' + hoyTexto() + (nombre ? ' - ' + nombre : '') + '\n';
+    puntos.forEach(p => { t += p + ': ' + r.porPoint[p] + '\n'; });
+    t += 'Total ' + r.palabra + ' recogidas hoy: ' + r.total;
+    window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+  };
+  $('nombre').addEventListener('input', pintarResumen);
+
   function pintar() {
     guardar('clicoh_pendientes', JSON.stringify(pendientes));
+    pintarResumen();
     $('contador').textContent = pendientes.length;
     $('btnCargar').textContent = '⬆️ Cargar al Drive (' + pendientes.length + ')';
     $('btnCargar').disabled = !pendientes.length || cargando;
+    $('btnVerQR').style.display = leer('clicoh_ultima_entrega', '') ? 'block' : 'none';
     const ul = $('lista'); ul.innerHTML = '';
     if (!pendientes.length) { ul.innerHTML = '<li class="vacio">Aún no hay guías escaneadas</li>'; return; }
     pendientes.slice().reverse().forEach(p => {
@@ -119,23 +221,82 @@
 
   function agregar(codigo) {
     codigo = String(codigo).trim();
-    if (!codigo) return;
+    if (!codigo || pausado) return;
+    if (codigo.startsWith(PREFIJO_ENTREGA)) { abrirRecepcion(codigo.slice(PREFIJO_ENTREGA.length)); return; }
     const ahora = Date.now();
-    if (codigo === ultimo && ahora - ultimoT < 2500) return; // misma guía frente a la cámara
+    if (codigo === ultimo && ahora - ultimoT < 2500) return;
     ultimo = codigo; ultimoT = ahora;
-    if (pendientes.length && pendientes[pendientes.length - 1].codigo === codigo) return; // sigue frente a la cámara
+    if (REGLA_GUIA && !REGLA_GUIA.test(codigo)) { aviso('⛔ ' + codigo + ' no es una etiqueta clicOH válida', 'err'); pitido(false); return; }
+    if (pendientes.length && pendientes[pendientes.length - 1].codigo === codigo) return;
+    const ya = cargadas()[codigo];
+    if (ya) { aviso('⛔ ' + codigo + ' ya fue cargada hoy a las ' + new Date(ya).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) + ' y no se puede escanear de nuevo hoy', 'err'); pitido(false); return; }
     if (pendientes.some(p => p.codigo === codigo)) { aviso('⚠️ ' + codigo + ' ya está en la lista', 'dup'); pitido(false); return; }
     pendientes.push({ codigo, hora: new Date().toISOString() });
     aviso('✅ ' + codigo + ' agregada (' + pendientes.length + ')', 'ok'); pitido(true);
     pintar();
   }
 
+  function mostrarQR(ent) {
+    $('qrCantidad').textContent = ent.cantidad + ' guías';
+    $('qrTexto').textContent = ent.aliado + ' · ' + ent.tipo;
+    $('qrId').textContent = ent.id;
+    try {
+      const q = qrcode(0, 'M'); q.addData(PREFIJO_ENTREGA + ent.id); q.make();
+      $('qrEntrega').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2 });
+    } catch (e) { $('qrEntrega').textContent = 'Código de entrega: ' + ent.id; }
+    $('modalQR').style.display = 'flex';
+  }
+  $('btnCerrarQR').onclick = () => { $('modalQR').style.display = 'none'; };
+  $('btnVerQR').onclick = () => { try { mostrarQR(JSON.parse(leer('clicoh_ultima_entrega', ''))); } catch (e) {} };
+
+  async function abrirRecepcion(id) {
+    pausado = true; entregaActual = id;
+    $('recInfo').textContent = 'Consultando entrega…'; $('recCantidad').textContent = '';
+    $('recForm').style.display = 'none'; $('recMsg').textContent = '';
+    $('modalRecibir').style.display = 'flex'; pitido(true);
+    try {
+      const r = await (await fetch(URL_DRIVE + '?entrega=' + encodeURIComponent(id))).json();
+      if (!r.ok) throw new Error(r.msg);
+      const e = r.entrega;
+      $('recInfo').innerHTML = '';
+      const t = document.createElement('div');
+      t.textContent = e.aliado + ' (CC ' + e.cedula + ') · ' + e.point + ' · ' + e.tipo + ' · cargado ' + e.fecha;
+      $('recInfo').append(t);
+      $('recCantidad').textContent = e.cantidad + ' guías';
+      if (e.estado === 'Confirmada') {
+        $('recMsg').textContent = '✔️ Ya fue confirmada por ' + e.recibidoPor + ' el ' + e.fechaRecibido;
+        $('recMsg').style.color = '#7a5b00';
+      } else {
+        $('recForm').style.display = 'block';
+      }
+    } catch (err) {
+      $('recInfo').textContent = '❌ No se encontró la entrega (' + err.message + ')';
+    }
+  }
+  $('btnConfirmar').onclick = async () => {
+    const receptor = $('receptor').value.trim();
+    if (!receptor) { $('recMsg').textContent = 'Escribe tu nombre'; $('recMsg').style.color = '#9b1c1c'; return; }
+    guardar('clicoh_receptor', receptor);
+    $('btnConfirmar').disabled = true; $('recMsg').textContent = 'Confirmando…'; $('recMsg').style.color = '#555';
+    try {
+      const r = await (await fetch(URL_DRIVE, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ accion: 'confirmar', id: entregaActual, receptor }) })).json();
+      if (!r.ok) throw new Error(r.msg);
+      $('recForm').style.display = 'none';
+      $('recMsg').textContent = '✅ Recibido confirmado: ' + r.cantidad + ' guías'; $('recMsg').style.color = '#11632f'; pitido(true);
+    } catch (err) {
+      $('recMsg').textContent = '❌ ' + err.message; $('recMsg').style.color = '#9b1c1c'; pitido(false);
+    }
+    $('btnConfirmar').disabled = false;
+  };
+  $('btnCerrarRec').onclick = () => { $('modalRecibir').style.display = 'none'; pausado = false; ultimo = ''; };
+
   $('btnCam').addEventListener('click', async () => {
     if (activo) {
       await escaner.stop(); activo = false; $('btnCam').textContent = '📷 Iniciar escáner'; $('btnCam').className = '';
       return;
     }
-    escaner = escaner || new Html5Qrcode('reader');
+    escaner = escaner || new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] });
     try {
       await escaner.start({ facingMode: 'environment' }, { fps: 12, qrbox: { width: 260, height: 170 } }, txt => agregar(txt));
       activo = true; $('btnCam').textContent = '⏹ Detener escáner'; $('btnCam').className = 'sec';
@@ -152,7 +313,8 @@
 
   $('btnCargar').addEventListener('click', async () => {
     const cedula = $('cedula').value.trim();
-    if (!cedula) { aviso('Escribe la cédula del aliado antes de cargar', 'err'); pitido(false); return; }
+    const nombre = $('nombre').value.trim();
+    if (!cedula || !nombre) { aviso('Escribe la cédula y el nombre del aliado antes de cargar', 'err'); pitido(false); return; }
     if (!pendientes.length) return;
     cargando = true; pintar();
     aviso('Cargando ' + pendientes.length + ' guías al Drive…', 'dup');
@@ -161,14 +323,21 @@
       const resp = await fetch(URL_DRIVE, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ cedula, nombre: $('nombre').value.trim(), point: $('point').value.trim(), tipo: $('tipo').value, codigos: enviadas })
+        body: JSON.stringify({ cedula, nombre, point: $('point').value.trim(), tipo: $('tipo').value, codigos: enviadas })
       });
       const r = await resp.json();
       if (!r.ok) throw new Error(r.msg || 'No se pudo cargar');
       pendientes = pendientes.filter(p => !enviadas.includes(p.codigo));
+      marcarCargadas(enviadas);
+      if (r.nuevos) registrarHistorial($('point').value.trim(), $('tipo').value, r.nuevos);
       let msg = '✅ Cargadas ' + r.nuevos + ' guías al Drive';
-      if (r.duplicados && r.duplicados.length) msg += '. ' + r.duplicados.length + ' ya estaban registradas hoy: ' + r.duplicados.join(', ');
+      if (r.duplicados && r.duplicados.length) msg += '. ' + r.duplicados.length + ' ya estaban registradas hoy y no se volvieron a cargar: ' + r.duplicados.join(', ');
       aviso(msg, r.duplicados && r.duplicados.length ? 'dup' : 'ok'); pitido(true);
+      if (r.entrega) {
+        const ent = { id: r.entrega, cantidad: r.nuevos, aliado: nombre, tipo: $('tipo').value };
+        guardar('clicoh_ultima_entrega', JSON.stringify(ent));
+        mostrarQR(ent);
+      }
     } catch (e) {
       aviso('❌ No se pudo cargar (' + e.message + '). Las guías siguen guardadas en el celular; intenta de nuevo con señal.', 'err'); pitido(false);
     }
