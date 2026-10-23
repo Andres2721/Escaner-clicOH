@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Escáner de guías clicOH</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -13,42 +13,54 @@
     header .num { background: #fff; color: #1F3864; border-radius: 20px; padding: 4px 12px; font-size: 16px; }
     main { padding: 16px; max-width: 520px; margin: 0 auto; padding-bottom: 110px; }
     label { display: block; font-size: 13px; font-weight: bold; margin: 10px 0 4px; }
-    input, select, button { width: 100%; font-size: 16px; padding: 12px; border-radius: 8px; border: 1px solid #c7ccd6; }
+    input, select, button, textarea { width: 100%; font-size: 16px; padding: 12px; border-radius: 8px; border: 1px solid #c7ccd6; font-family: inherit; }
     button { background: #1F3864; color: #fff; border: none; font-weight: bold; cursor: pointer; }
     button.sec { background: #fff; color: #1F3864; border: 2px solid #1F3864; }
     button.verde { background: #11632f; }
     button:disabled { opacity: .5; }
     .card { background: #fff; border-radius: 10px; padding: 14px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    #reader { margin-top: 12px; border-radius: 10px; overflow: hidden; background: #000; }
+    .ayuda { font-size: 13px; color: #555; margin-top: 6px; }
+    #reader { margin-top: 12px; border-radius: 10px; overflow: hidden; background: #000; position: relative; display: none; }
+    #reader video { width: 100%; display: block; }
+    #reader .marco { position: absolute; inset: 15%; border: 3px solid rgba(255,255,255,.85); border-radius: 12px; pointer-events: none; }
     #estado { padding: 12px; border-radius: 8px; margin-top: 12px; font-weight: bold; text-align: center; display: none; }
     .ok { background: #d9f2e1; color: #11632f; }
     .dup { background: #fff2cc; color: #7a5b00; }
     .err { background: #fde2e1; color: #9b1c1c; }
-    ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 320px; overflow-y: auto; }
-    li { padding: 9px 0; border-bottom: 1px solid #eee; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+    ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 300px; overflow-y: auto; }
+    li { padding: 9px 0; border-bottom: 1px solid #eee; font-size: 15px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    li small { color: #777; }
     li button { width: auto; padding: 4px 10px; font-size: 13px; background: #fde2e1; color: #9b1c1c; }
     .row { display: flex; gap: 8px; }
     .row input { flex: 1; } .row button { width: auto; }
     .pie { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; padding: 12px 16px; box-shadow: 0 -2px 8px rgba(0,0,0,.12); }
-    .pie button { max-width: 520px; display: block; margin: 0 auto; font-size: 18px; padding: 16px; background: #11632f; }
-    .vacio { color: #777; font-size: 14px; text-align: center; padding: 10px 0; }
-    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
-    .modal .caja { background: #fff; border-radius: 14px; padding: 20px; max-width: 420px; width: 100%; text-align: center; max-height: 95vh; overflow-y: auto; }
-    .grande { font-size: 44px; font-weight: bold; color: #1F3864; margin: 6px 0; }
-    #qrEntrega img, #qrEntrega svg { width: 240px; height: 240px; }
-    .id { font-family: monospace; font-size: 15px; color: #555; }
+    .pie button { max-width: 520px; display: block; margin: 0 auto; font-size: 16px; padding: 14px; }
+    .vacio { color: #777; font-size: 14px; justify-content: center; }
+    .total { margin-top: 10px; font-size: 18px; font-weight: bold; color: #1F3864; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+    .modal .caja { background: #fff; border-radius: 16px; padding: 22px; max-width: 420px; width: 100%; text-align: center; }
+    .gigante { font-size: 34px; font-weight: 900; color: #1F3864; line-height: 1.15; margin: 10px 0; text-transform: uppercase; }
+    #gen { display: none; }
+    .tarjetas { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 14px; }
+    .tarjeta { width: 250px; border: 2px solid #1F3864; border-radius: 14px; padding: 14px; text-align: center; background: #fff; page-break-inside: avoid; }
+    .tarjeta svg { width: 200px; height: 200px; }
+    .tarjeta .n { font-size: 20px; font-weight: bold; color: #1F3864; margin-top: 6px; text-transform: uppercase; }
+    @media print { header, .noimp { display: none !important; } body { background: #fff; } main { max-width: none; } }
   </style>
 </head>
 <body>
-<header>Escáner de guías clicOH <span class="num" id="contador">0</span></header>
-<main>
+<header><span id="titulo">Escáner de guías clicOH</span> <span class="num" id="contador">0</span></header>
+
+<!-- ================= MODO ALIADO ================= -->
+<main id="app">
   <div class="card">
     <label for="cedula">Cédula del aliado</label>
     <input id="cedula" inputmode="numeric" placeholder="Ej: 1012345678">
     <label for="nombre">Nombre del aliado</label>
     <input id="nombre" placeholder="Nombre y apellido">
-    <label for="point">Point / Ciudad</label>
-    <input id="point" placeholder="Ej: Point Chapinero - Bogotá">
+    <label for="point">Point / CP donde estás escaneando</label>
+    <input id="point" placeholder="Ej: CP 19">
+    <div class="ayuda">Cambia el CP cada vez que pases a otro punto.</div>
     <label for="tipo">Tipo de movimiento</label>
     <select id="tipo">
       <option>Devolución</option>
@@ -58,7 +70,7 @@
   </div>
 
   <button id="btnCam" style="margin-top:14px;font-size:18px;padding:16px">📷 Iniciar escáner</button>
-  <div id="reader"></div>
+  <div id="reader"><video id="video" playsinline muted></video><div class="marco"></div></div>
   <div id="estado"></div>
 
   <div class="card">
@@ -70,67 +82,57 @@
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <strong>Guías escaneadas</strong>
-      <button id="btnLimpiar" class="sec" style="width:auto;padding:6px 12px;font-size:13px">Vaciar lista</button>
-    </div>
-    <ul id="lista"></ul>
-  </div>
-
-  <div class="card" id="cardResumen">
     <strong id="resTitulo">📋 Mi resumen de hoy</strong>
     <ul id="resLista"></ul>
-    <div id="resTotal" style="margin-top:10px;font-size:17px;font-weight:bold;color:#11632f"></div>
-    <div id="resPend" style="margin-top:6px;font-size:14px;color:#7a5b00"></div>
+    <div class="total" id="resTotal"></div>
+    <div class="ayuda" id="resEstado"></div>
     <button id="btnWhats" class="sec" style="margin-top:12px">💬 Enviar resumen por WhatsApp</button>
   </div>
 
-  <button id="btnVerQR" class="sec" style="margin-top:14px;display:none">🔳 Ver QR de mi última entrega</button>
+  <div class="card">
+    <strong>📦 Guías por entregar en bodega</strong>
+    <div class="ayuda">Al llegar a bodega, escanea el QR de la persona que te recibe.</div>
+    <ul id="lista"></ul>
+  </div>
 </main>
 
-<div class="pie"><button id="btnCargar">⬆️ Cargar al Drive (0)</button></div>
+<div class="pie" id="pie"><button id="btnSubir" class="sec">☁️ Guardar avance en Drive (0)</button></div>
 
-<div class="modal" id="modalQR"><div class="caja">
-  <div style="font-weight:bold;color:#11632f">✅ Guías cargadas</div>
-  <div>Muestra este código a quien recibe</div>
-  <div class="grande" id="qrCantidad">0</div>
-  <div id="qrTexto" style="margin-bottom:8px"></div>
-  <div id="qrEntrega"></div>
-  <div class="id" id="qrId"></div>
-  <button id="btnCerrarQR" class="sec" style="margin-top:14px">Cerrar</button>
+<!-- Entrega en bodega -->
+<div class="modal" id="modalEntrega"><div class="caja">
+  <div id="entIcono" style="font-size:46px">📦</div>
+  <div class="gigante" id="entTexto"></div>
+  <div id="entDetalle" style="color:#555"></div>
+  <button id="btnEntregar" class="verde" style="margin-top:16px;font-size:20px;padding:16px">✔️ Confirmar entrega</button>
+  <div id="entMsg" style="margin-top:10px;font-weight:bold"></div>
+  <button id="btnCerrarEnt" class="sec" style="margin-top:12px">Cerrar</button>
 </div></div>
 
-<div class="modal" id="modalRecibir"><div class="caja">
-  <div style="font-weight:bold;font-size:18px">📦 Confirmar recibido</div>
-  <div id="recInfo" style="margin-top:8px">Consultando entrega…</div>
-  <div class="grande" id="recCantidad"></div>
-  <div id="recForm" style="display:none;text-align:left">
-    <label for="receptor">Nombre de quien recibe</label>
-    <input id="receptor" placeholder="Tu nombre">
-    <button id="btnConfirmar" class="verde" style="margin-top:12px;font-size:18px;padding:16px">✔️ Confirmar recibido</button>
+<!-- ================= GENERADOR DE QR DE BODEGA (link + ?bodega) ================= -->
+<main id="gen">
+  <div class="card noimp">
+    <strong>QR personal para el equipo de bodega</strong>
+    <label for="nombres">Escribe un nombre por línea</label>
+    <textarea id="nombres" rows="6" placeholder="Andrés Gómez&#10;Ana Torres"></textarea>
+    <button id="btnGenerar" style="margin-top:12px">Generar QR</button>
+    <button id="btnImprimir" class="sec" style="margin-top:8px">🖨️ Imprimir</button>
   </div>
-  <div id="recMsg" style="margin-top:10px;font-weight:bold"></div>
-  <button id="btnCerrarRec" class="sec" style="margin-top:12px">Cerrar</button>
-</div></div>
+  <div class="tarjetas" id="tarjetas"></div>
+</main>
 
 <script>
+  // ⚠️ URL de la aplicación web de Apps Script (termina en /exec)
   const URL_DRIVE = 'https://script.google.com/macros/s/AKfycbzNByRUWn1B9vepbYSYaXcicGC7i36A1PzN1wQoi8jcuA-YUnqvPr-L1fhIcQIJieMK/exec';
-  const REGLA_GUIA = /^\d{13}$/; // etiqueta clicOH: QR con 13 números
-  const PREFIJO_ENTREGA = 'CLICOH-ENTREGA:';
+  const REGLA_GUIA = /^\d{13}$/;           // etiqueta clicOH: QR con 13 números
+  const PREFIJO_BODEGA = 'CLICOH-RECIBE|';  // QR personal de quien recibe en bodega
 
   const $ = id => document.getElementById(id);
   const leer = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; } };
   const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-
-  ['cedula', 'nombre', 'point', 'tipo'].forEach(c => {
-    const v = leer('clicoh_' + c, null); if (v) $(c).value = v;
-    $(c).addEventListener('change', () => guardar('clicoh_' + c, $(c).value));
-  });
-  $('receptor').value = leer('clicoh_receptor', '');
-
-  let pendientes = [];
-  try { pendientes = JSON.parse(leer('clicoh_pendientes', '[]')) || []; } catch (e) { pendientes = []; }
-  let escaner = null, activo = false, ultimo = '', ultimoT = 0, cargando = false, pausado = false, entregaActual = null;
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const claveDia = t => { const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+  const hoyTexto = () => { const d = new Date(); return d.getDate() + ' de ' + MESES[d.getMonth()]; };
+  const horaTexto = t => new Date(t).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 
   function aviso(txt, clase) { const e = $('estado'); e.textContent = txt; e.className = clase; e.style.display = 'block'; }
   function pitido(ok) {
@@ -142,164 +144,235 @@
     if (navigator.vibrate) navigator.vibrate(ok ? 70 : [60, 60, 60]);
   }
 
-  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const hoyClave = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
-  const hoyTexto = () => { const d = new Date(); return d.getDate() + ' de ' + MESES[d.getMonth()]; };
-
-  function cargadas() {
-    try { const m = JSON.parse(leer('clicoh_cargadas', '{}')) || {}; return m.dia === hoyClave() ? (m.codigos || {}) : {}; }
-    catch (e) { return {}; }
-  }
-  function marcarCargadas(lista) {
-    const c = cargadas(), ahora = Date.now();
-    lista.forEach(x => { c[x] = ahora; });
-    guardar('clicoh_cargadas', JSON.stringify({ dia: hoyClave(), codigos: c }));
+  // Los QR se generan en UTF-8 para que las tildes (Andrés, Gómez) se lean bien
+  if (typeof qrcode !== 'undefined' && qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) {
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
   }
 
-  function historial() { try { return JSON.parse(leer('clicoh_historial', '[]')) || []; } catch (e) { return []; } }
-  function registrarHistorial(point, tipo, cantidad) {
-    const limite = Date.now() - 7 * 864e5;
-    const h = historial().filter(x => x.t > limite);
-    h.push({ dia: hoyClave(), t: Date.now(), point: point || 'Sin Point', tipo, cantidad });
-    guardar('clicoh_historial', JSON.stringify(h));
-  }
-  function resumenHoy() {
-    const hoy = historial().filter(x => x.dia === hoyClave());
-    const porPoint = {};
-    hoy.forEach(x => { porPoint[x.point] = (porPoint[x.point] || 0) + x.cantidad; });
-    const total = hoy.reduce((s, x) => s + x.cantidad, 0);
-    const soloDev = hoy.length && hoy.every(x => x.tipo === 'Devolución');
-    return { porPoint, total, palabra: soloDev || !hoy.length ? 'devoluciones' : 'guías' };
-  }
-  function pintarResumen() {
-    const r = resumenHoy();
-    const nombre = $('nombre').value.trim();
-    $('resTitulo').textContent = '📋 Mi resumen de hoy, ' + hoyTexto();
-    const ul = $('resLista'); ul.innerHTML = '';
-    const puntos = Object.keys(r.porPoint);
-    if (!puntos.length) {
-      ul.innerHTML = '<li class="vacio">Aún no has cargado guías hoy</li>';
-    } else {
-      puntos.forEach(p => {
-        const li = document.createElement('li');
-        const a = document.createElement('span'); a.textContent = p;
-        const b = document.createElement('strong'); b.textContent = r.porPoint[p];
-        li.append(a, b); ul.append(li);
+  // ============ GENERADOR DE QR DE BODEGA ============
+  if (/[?&]bodega/.test(location.search)) {
+    $('app').style.display = 'none'; $('pie').style.display = 'none'; $('contador').style.display = 'none';
+    $('gen').style.display = 'block'; $('titulo').textContent = 'QR de bodega clicOH';
+    $('nombres').value = leer('clicoh_nombres_bodega', '');
+    $('btnGenerar').onclick = () => {
+      guardar('clicoh_nombres_bodega', $('nombres').value);
+      const cont = $('tarjetas'); cont.innerHTML = '';
+      $('nombres').value.split('\n').map(x => x.trim()).filter(x => x).forEach(n => {
+        const q = qrcode(0, 'M'); q.addData(PREFIJO_BODEGA + n, 'Byte'); q.make();
+        const t = document.createElement('div'); t.className = 'tarjeta';
+        t.innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+        const s = document.createElement('div'); s.className = 'n'; s.textContent = n;
+        const p = document.createElement('div'); p.textContent = 'Recibe devoluciones · clicOH'; p.style.cssText = 'font-size:12px;color:#555';
+        t.append(s, p); cont.append(t);
       });
-    }
-    $('resTotal').textContent = 'Total ' + r.palabra + ' recogidas hoy ' + hoyTexto() + ': ' + r.total;
-    $('resPend').textContent = pendientes.length ? '⚠️ Tienes ' + pendientes.length + ' guías escaneadas sin cargar' : '';
-    $('btnWhats').style.display = puntos.length ? 'block' : 'none';
-    return { r, nombre, puntos };
+    };
+    $('btnImprimir').onclick = () => window.print();
+    if ($('nombres').value) $('btnGenerar').click();
   }
-  $('btnWhats').onclick = () => {
-    const { r, nombre, puntos } = pintarResumen();
-    let t = 'Resumen ' + hoyTexto() + (nombre ? ' - ' + nombre : '') + '\n';
-    puntos.forEach(p => { t += p + ': ' + r.porPoint[p] + '\n'; });
-    t += 'Total ' + r.palabra + ' recogidas hoy: ' + r.total;
-    window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
-  };
-  $('nombre').addEventListener('input', pintarResumen);
+
+  // ============ MODO ALIADO ============
+  ['cedula', 'nombre', 'point', 'tipo'].forEach(c => {
+    const v = leer('clicoh_' + c, null); if (v) $(c).value = v;
+    $(c).addEventListener('change', () => guardar('clicoh_' + c, $(c).value.trim()));
+  });
+
+  // Cada guía: { codigo, point, t (hora escaneo), subida, entregada, receptor, tEntrega }
+  let guias = [];
+  try { guias = JSON.parse(leer('clicoh_guias', '[]')) || []; } catch (e) { guias = []; }
+  // Guías que quedaron sin cargar en la versión anterior del escáner
+  try {
+    const viejas = JSON.parse(leer('clicoh_pendientes', '[]')) || [];
+    viejas.forEach(p => { if (!guias.some(g => g.codigo === p.codigo)) guias.push({ codigo: p.codigo, point: leer('clicoh_point', '') || 'Sin CP', t: Date.parse(p.hora) || Date.now(), subida: false, entregada: false }); });
+    if (viejas.length) localStorage.removeItem('clicoh_pendientes');
+  } catch (e) {}
+  // Conserva 3 días de historial; las no entregadas nunca se borran
+  guias = guias.filter(g => !g.entregada || Date.now() - g.t < 3 * 864e5);
+
+  let flujo = null, activo = false, ultimo = '', ultimoT = 0, ocupado = false, pausado = false, receptorActual = '';
+
+  const deHoy = () => guias.filter(g => claveDia(g.t) === claveDia(Date.now()));
+  const porEntregar = () => guias.filter(g => !g.entregada);
+  const porSubir = () => guias.filter(g => !g.subida);
 
   function pintar() {
-    guardar('clicoh_pendientes', JSON.stringify(pendientes));
-    pintarResumen();
-    $('contador').textContent = pendientes.length;
-    $('btnCargar').textContent = '⬆️ Cargar al Drive (' + pendientes.length + ')';
-    $('btnCargar').disabled = !pendientes.length || cargando;
-    $('btnVerQR').style.display = leer('clicoh_ultima_entrega', '') ? 'block' : 'none';
-    const ul = $('lista'); ul.innerHTML = '';
-    if (!pendientes.length) { ul.innerHTML = '<li class="vacio">Aún no hay guías escaneadas</li>'; return; }
-    pendientes.slice().reverse().forEach(p => {
+    guardar('clicoh_guias', JSON.stringify(guias));
+    const hoy = deHoy(), pend = porEntregar();
+    $('contador').textContent = pend.length;
+
+    // Resumen por CP
+    $('resTitulo').textContent = '📋 Mi resumen de hoy, ' + hoyTexto();
+    const porCP = {};
+    hoy.forEach(g => { porCP[g.point] = (porCP[g.point] || 0) + 1; });
+    const ul = $('resLista'); ul.innerHTML = '';
+    const cps = Object.keys(porCP);
+    if (!cps.length) ul.innerHTML = '<li class="vacio">Aún no has escaneado guías hoy</li>';
+    cps.forEach(cp => {
       const li = document.createElement('li');
-      const s = document.createElement('span'); s.textContent = p.codigo;
-      const b = document.createElement('button'); b.textContent = 'Quitar';
-      b.onclick = () => { pendientes = pendientes.filter(x => x.codigo !== p.codigo); pintar(); };
-      li.append(s, b); ul.append(li);
+      const a = document.createElement('span'); a.textContent = cp;
+      const b = document.createElement('strong'); b.textContent = porCP[cp];
+      li.append(a, b); ul.append(li);
     });
+    $('resTotal').textContent = 'Total paquetes escaneados hoy: ' + hoy.length;
+    const entregadasHoy = hoy.filter(g => g.entregada);
+    const receptores = [...new Set(entregadasHoy.map(g => g.receptor))];
+    $('resEstado').textContent = hoy.length
+      ? '✅ Entregadas en bodega: ' + entregadasHoy.length + (receptores.length ? ' (recibió ' + receptores.join(', ') + ')' : '') + ' · 📦 Por entregar: ' + pend.length
+      : '';
+    $('btnWhats').style.display = cps.length ? 'block' : 'none';
+
+    // Lista por entregar
+    const ul2 = $('lista'); ul2.innerHTML = '';
+    if (!pend.length) ul2.innerHTML = '<li class="vacio">No tienes guías pendientes por entregar</li>';
+    pend.slice().reverse().forEach(g => {
+      const li = document.createElement('li');
+      const s = document.createElement('span');
+      s.append(document.createTextNode(g.codigo + ' '));
+      const sm = document.createElement('small'); sm.textContent = g.point + ' · ' + horaTexto(g.t); s.append(sm);
+      li.append(s);
+      if (!g.subida) {
+        const b = document.createElement('button'); b.textContent = 'Quitar';
+        b.onclick = () => { guias = guias.filter(x => x !== g); pintar(); };
+        li.append(b);
+      }
+      ul2.append(li);
+    });
+
+    const ps = porSubir().length;
+    $('btnSubir').textContent = '☁️ Guardar avance en Drive (' + ps + ')';
+    $('btnSubir').disabled = !ps || ocupado;
   }
 
   function agregar(codigo) {
     codigo = String(codigo).trim();
     if (!codigo || pausado) return;
-    if (codigo.startsWith(PREFIJO_ENTREGA)) { abrirRecepcion(codigo.slice(PREFIJO_ENTREGA.length)); return; }
+    if (codigo.startsWith(PREFIJO_BODEGA)) { abrirEntrega(codigo.slice(PREFIJO_BODEGA.length).trim()); return; }
     const ahora = Date.now();
     if (codigo === ultimo && ahora - ultimoT < 2500) return;
     ultimo = codigo; ultimoT = ahora;
     if (REGLA_GUIA && !REGLA_GUIA.test(codigo)) { aviso('⛔ ' + codigo + ' no es una etiqueta clicOH válida', 'err'); pitido(false); return; }
-    if (pendientes.length && pendientes[pendientes.length - 1].codigo === codigo) return;
-    const ya = cargadas()[codigo];
-    if (ya) { aviso('⛔ ' + codigo + ' ya fue cargada hoy a las ' + new Date(ya).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) + ' y no se puede escanear de nuevo hoy', 'err'); pitido(false); return; }
-    if (pendientes.some(p => p.codigo === codigo)) { aviso('⚠️ ' + codigo + ' ya está en la lista', 'dup'); pitido(false); return; }
-    pendientes.push({ codigo, hora: new Date().toISOString() });
-    aviso('✅ ' + codigo + ' agregada (' + pendientes.length + ')', 'ok'); pitido(true);
+    const cp = $('point').value.trim();
+    if (!cp) { aviso('Escribe el Point / CP antes de escanear', 'err'); pitido(false); return; }
+    const ya = guias.find(g => g.codigo === codigo && claveDia(g.t) === claveDia(ahora));
+    if (ya) { aviso('⛔ ' + codigo + ' ya fue escaneada hoy a las ' + horaTexto(ya.t) + ' en ' + ya.point, 'err'); pitido(false); return; }
+    guias.push({ codigo, point: cp, t: ahora, subida: false, entregada: false });
+    const enCP = deHoy().filter(g => g.point === cp).length;
+    aviso('✅ ' + codigo + ' · ' + cp + ': ' + enCP + ' · Total hoy: ' + deHoy().length, 'ok'); pitido(true);
     pintar();
   }
 
-  function mostrarQR(ent) {
-    $('qrCantidad').textContent = ent.cantidad + ' guías';
-    $('qrTexto').textContent = ent.aliado + ' · ' + ent.tipo;
-    $('qrId').textContent = ent.id;
-    try {
-      const q = qrcode(0, 'M'); q.addData(PREFIJO_ENTREGA + ent.id); q.make();
-      $('qrEntrega').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2 });
-    } catch (e) { $('qrEntrega').textContent = 'Código de entrega: ' + ent.id; }
-    $('modalQR').style.display = 'flex';
+  function datosAliado() {
+    return { cedula: $('cedula').value.trim(), nombre: $('nombre').value.trim(), tipo: $('tipo').value };
   }
-  $('btnCerrarQR').onclick = () => { $('modalQR').style.display = 'none'; };
-  $('btnVerQR').onclick = () => { try { mostrarQR(JSON.parse(leer('clicoh_ultima_entrega', ''))); } catch (e) {} };
+  async function enviar(cuerpo) {
+    const r = await (await fetch(URL_DRIVE, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(cuerpo) })).json();
+    if (!r.ok) throw new Error(r.msg || 'Error del Drive');
+    return r;
+  }
 
-  async function abrirRecepcion(id) {
-    pausado = true; entregaActual = id;
-    $('recInfo').textContent = 'Consultando entrega…'; $('recCantidad').textContent = '';
-    $('recForm').style.display = 'none'; $('recMsg').textContent = '';
-    $('modalRecibir').style.display = 'flex'; pitido(true);
+  // Guardar avance (opcional, para no perder nada si se daña el celular)
+  $('btnSubir').onclick = async () => {
+    const a = datosAliado();
+    if (!a.cedula || !a.nombre) { aviso('Escribe tu cédula y nombre', 'err'); pitido(false); return; }
+    const lote = porSubir(); if (!lote.length) return;
+    ocupado = true; pintar(); aviso('Guardando ' + lote.length + ' guías en el Drive…', 'dup');
     try {
-      const r = await (await fetch(URL_DRIVE + '?entrega=' + encodeURIComponent(id))).json();
-      if (!r.ok) throw new Error(r.msg);
-      const e = r.entrega;
-      $('recInfo').innerHTML = '';
-      const t = document.createElement('div');
-      t.textContent = e.aliado + ' (CC ' + e.cedula + ') · ' + e.point + ' · ' + e.tipo + ' · cargado ' + e.fecha;
-      $('recInfo').append(t);
-      $('recCantidad').textContent = e.cantidad + ' guías';
-      if (e.estado === 'Confirmada') {
-        $('recMsg').textContent = '✔️ Ya fue confirmada por ' + e.recibidoPor + ' el ' + e.fechaRecibido;
-        $('recMsg').style.color = '#7a5b00';
-      } else {
-        $('recForm').style.display = 'block';
-      }
-    } catch (err) {
-      $('recInfo').textContent = '❌ No se encontró la entrega (' + err.message + ')';
-    }
-  }
-  $('btnConfirmar').onclick = async () => {
-    const receptor = $('receptor').value.trim();
-    if (!receptor) { $('recMsg').textContent = 'Escribe tu nombre'; $('recMsg').style.color = '#9b1c1c'; return; }
-    guardar('clicoh_receptor', receptor);
-    $('btnConfirmar').disabled = true; $('recMsg').textContent = 'Confirmando…'; $('recMsg').style.color = '#555';
-    try {
-      const r = await (await fetch(URL_DRIVE, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ accion: 'confirmar', id: entregaActual, receptor }) })).json();
-      if (!r.ok) throw new Error(r.msg);
-      $('recForm').style.display = 'none';
-      $('recMsg').textContent = '✅ Recibido confirmado: ' + r.cantidad + ' guías'; $('recMsg').style.color = '#11632f'; pitido(true);
-    } catch (err) {
-      $('recMsg').textContent = '❌ ' + err.message; $('recMsg').style.color = '#9b1c1c'; pitido(false);
-    }
-    $('btnConfirmar').disabled = false;
+      const r = await enviar(Object.assign({ accion: 'registrar', items: lote.map(g => ({ codigo: g.codigo, point: g.point })) }, a));
+      lote.forEach(g => { g.subida = true; });
+      aviso('☁️ Guardadas ' + lote.length + ' guías en el Drive' + (r.duplicados && r.duplicados.length ? ' (' + r.duplicados.length + ' ya estaban registradas hoy)' : ''), 'ok'); pitido(true);
+    } catch (e) { aviso('❌ Sin conexión (' + e.message + '). Tus guías siguen guardadas en el celular.', 'err'); pitido(false); }
+    ocupado = false; pintar();
   };
-  $('btnCerrarRec').onclick = () => { $('modalRecibir').style.display = 'none'; pausado = false; ultimo = ''; };
 
+  // ---------- Entrega en bodega: el aliado escanea el QR de quien recibe ----------
+  function abrirEntrega(receptor) {
+    pausado = true; receptorActual = receptor;
+    const n = porEntregar().length;
+    $('entIcono').textContent = '📦';
+    $('entTexto').textContent = n ? receptor + ' recibe ' + n + ' guías' : 'No tienes guías por entregar';
+    const cps = {}; porEntregar().forEach(g => { cps[g.point] = (cps[g.point] || 0) + 1; });
+    $('entDetalle').textContent = Object.keys(cps).map(k => k + ': ' + cps[k]).join(' · ');
+    $('btnEntregar').style.display = n ? 'block' : 'none'; $('btnEntregar').disabled = false;
+    $('entMsg').textContent = '';
+    $('modalEntrega').style.display = 'flex'; pitido(true);
+  }
+  $('btnEntregar').onclick = async () => {
+    const a = datosAliado();
+    if (!a.cedula || !a.nombre) { $('entMsg').textContent = 'Escribe tu cédula y nombre antes de entregar'; $('entMsg').style.color = '#9b1c1c'; return; }
+    const lote = porEntregar(); if (!lote.length) return;
+    $('btnEntregar').disabled = true; $('entMsg').textContent = 'Enviando…'; $('entMsg').style.color = '#555';
+    try {
+      const r = await enviar(Object.assign({
+        accion: 'entregar', receptor: receptorActual,
+        items: lote.filter(g => !g.subida).map(g => ({ codigo: g.codigo, point: g.point })),
+        codigos: lote.map(g => g.codigo)
+      }, a));
+      const t = Date.now();
+      lote.forEach(g => { g.subida = true; g.entregada = true; g.receptor = receptorActual; g.tEntrega = t; });
+      $('entIcono').textContent = '✅';
+      $('entTexto').textContent = receptorActual + ' recibió ' + r.recibidas + ' guías';
+      $('entDetalle').textContent = 'Hora: ' + (r.hora || horaTexto(t));
+      $('btnEntregar').style.display = 'none'; $('entMsg').textContent = '';
+      pitido(true); pintar();
+    } catch (e) {
+      $('entMsg').textContent = '❌ No se pudo registrar (' + e.message + '). Intenta de nuevo.'; $('entMsg').style.color = '#9b1c1c';
+      $('btnEntregar').disabled = false; pitido(false);
+    }
+  };
+  $('btnCerrarEnt').onclick = () => { $('modalEntrega').style.display = 'none'; pausado = false; ultimo = ''; };
+
+  $('btnWhats').onclick = () => {
+    const hoy = deHoy(), porCP = {};
+    hoy.forEach(g => { porCP[g.point] = (porCP[g.point] || 0) + 1; });
+    let t = 'Resumen ' + hoyTexto() + ' - ' + $('nombre').value.trim() + '\n';
+    Object.keys(porCP).forEach(cp => { t += cp + ': ' + porCP[cp] + '\n'; });
+    t += 'Total paquetes escaneados: ' + hoy.length;
+    const ent = hoy.filter(g => g.entregada).length;
+    if (ent) t += '\nEntregados en bodega: ' + ent;
+    window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+  };
+
+  // ---------- Cámara: lector nativo del celular (Android) o jsQR ----------
+  const lienzo = document.createElement('canvas');
+  const ctxL = lienzo.getContext('2d', { willReadFrequently: true });
+  let detectorNativo = null, vuelta = 0;
+  const ESCALAS = [1, 0.66, 0.5];
+  if ('BarcodeDetector' in window) {
+    BarcodeDetector.getSupportedFormats().then(f => { if (f.includes('qr_code')) detectorNativo = new BarcodeDetector({ formats: ['qr_code'] }); }).catch(() => {});
+  }
+  async function leerCuadro() {
+    if (!activo) return;
+    const v = $('video');
+    if (v.readyState >= 2 && !pausado) {
+      let texto = null;
+      try {
+        if (detectorNativo) {
+          const r = await detectorNativo.detect(v);
+          if (r.length) texto = r[0].rawValue;
+        } else {
+          vuelta = (vuelta + 1) % ESCALAS.length;
+          const esc = Math.min(1, 1920 / v.videoWidth) * ESCALAS[vuelta];
+          lienzo.width = Math.round(v.videoWidth * esc); lienzo.height = Math.round(v.videoHeight * esc);
+          ctxL.drawImage(v, 0, 0, lienzo.width, lienzo.height);
+          const r = jsQR(ctxL.getImageData(0, 0, lienzo.width, lienzo.height).data, lienzo.width, lienzo.height, { inversionAttempts: 'dontInvert' });
+          if (r) texto = r.data;
+        }
+      } catch (e) {}
+      if (texto) agregar(texto);
+    }
+    setTimeout(leerCuadro, 120);
+  }
   $('btnCam').addEventListener('click', async () => {
     if (activo) {
-      await escaner.stop(); activo = false; $('btnCam').textContent = '📷 Iniciar escáner'; $('btnCam').className = '';
+      activo = false; if (flujo) flujo.getTracks().forEach(t => t.stop()); flujo = null;
+      $('reader').style.display = 'none'; $('btnCam').textContent = '📷 Iniciar escáner'; $('btnCam').className = '';
       return;
     }
-    escaner = escaner || new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] });
     try {
-      await escaner.start({ facingMode: 'environment' }, { fps: 12, qrbox: { width: 260, height: 170 } }, txt => agregar(txt));
+      flujo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      const v = $('video'); v.srcObject = flujo; await v.play();
+      $('reader').style.display = 'block';
       activo = true; $('btnCam').textContent = '⏹ Detener escáner'; $('btnCam').className = 'sec';
+      leerCuadro();
     } catch (e) {
       aviso('No se pudo abrir la cámara. Revisa el permiso de cámara del navegador para esta página.', 'err');
     }
@@ -307,45 +380,9 @@
 
   $('btnManual').addEventListener('click', () => { agregar($('manual').value); $('manual').value = ''; $('manual').focus(); });
   $('manual').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btnManual').click(); } });
-  $('btnLimpiar').addEventListener('click', () => {
-    if (pendientes.length && confirm('¿Borrar las ' + pendientes.length + ' guías de la lista sin cargarlas?')) { pendientes = []; pintar(); }
-  });
-
-  $('btnCargar').addEventListener('click', async () => {
-    const cedula = $('cedula').value.trim();
-    const nombre = $('nombre').value.trim();
-    if (!cedula || !nombre) { aviso('Escribe la cédula y el nombre del aliado antes de cargar', 'err'); pitido(false); return; }
-    if (!pendientes.length) return;
-    cargando = true; pintar();
-    aviso('Cargando ' + pendientes.length + ' guías al Drive…', 'dup');
-    const enviadas = pendientes.map(p => p.codigo);
-    try {
-      const resp = await fetch(URL_DRIVE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ cedula, nombre, point: $('point').value.trim(), tipo: $('tipo').value, codigos: enviadas })
-      });
-      const r = await resp.json();
-      if (!r.ok) throw new Error(r.msg || 'No se pudo cargar');
-      pendientes = pendientes.filter(p => !enviadas.includes(p.codigo));
-      marcarCargadas(enviadas);
-      if (r.nuevos) registrarHistorial($('point').value.trim(), $('tipo').value, r.nuevos);
-      let msg = '✅ Cargadas ' + r.nuevos + ' guías al Drive';
-      if (r.duplicados && r.duplicados.length) msg += '. ' + r.duplicados.length + ' ya estaban registradas hoy y no se volvieron a cargar: ' + r.duplicados.join(', ');
-      aviso(msg, r.duplicados && r.duplicados.length ? 'dup' : 'ok'); pitido(true);
-      if (r.entrega) {
-        const ent = { id: r.entrega, cantidad: r.nuevos, aliado: nombre, tipo: $('tipo').value };
-        guardar('clicoh_ultima_entrega', JSON.stringify(ent));
-        mostrarQR(ent);
-      }
-    } catch (e) {
-      aviso('❌ No se pudo cargar (' + e.message + '). Las guías siguen guardadas en el celular; intenta de nuevo con señal.', 'err'); pitido(false);
-    }
-    cargando = false; pintar();
-  });
 
   pintar();
-  if (pendientes.length) aviso('Tienes ' + pendientes.length + ' guías pendientes por cargar', 'dup');
+  if (porEntregar().length) aviso('Tienes ' + porEntregar().length + ' guías por entregar en bodega', 'dup');
 </script>
 </body>
 </html>
