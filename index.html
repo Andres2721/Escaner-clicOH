@@ -86,7 +86,6 @@
     <ul id="resLista"></ul>
     <div class="total" id="resTotal"></div>
     <div class="ayuda" id="resEstado"></div>
-    <button id="btnWhats" class="sec" style="margin-top:12px">💬 Enviar resumen por WhatsApp</button>
   </div>
 
   <div class="card">
@@ -218,7 +217,6 @@
     $('resEstado').textContent = hoy.length
       ? '✅ Entregadas en bodega: ' + entregadasHoy.length + (receptores.length ? ' (recibió ' + receptores.join(', ') + ')' : '') + ' · 📦 Por entregar: ' + pend.length
       : '';
-    $('btnWhats').style.display = cps.length ? 'block' : 'none';
 
     // Lista por entregar
     const ul2 = $('lista'); ul2.innerHTML = '';
@@ -320,16 +318,6 @@
   };
   $('btnCerrarEnt').onclick = () => { $('modalEntrega').style.display = 'none'; pausado = false; ultimo = ''; };
 
-  $('btnWhats').onclick = () => {
-    const hoy = deHoy(), porCP = {};
-    hoy.forEach(g => { porCP[g.point] = (porCP[g.point] || 0) + 1; });
-    let t = 'Resumen ' + hoyTexto() + ' - ' + $('nombre').value.trim() + '\n';
-    Object.keys(porCP).forEach(cp => { t += cp + ': ' + porCP[cp] + '\n'; });
-    t += 'Total paquetes escaneados: ' + hoy.length;
-    const ent = hoy.filter(g => g.entregada).length;
-    if (ent) t += '\nEntregados en bodega: ' + ent;
-    window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
-  };
 
   // ---------- Cámara: lector nativo del celular (Android) o jsQR ----------
   const lienzo = document.createElement('canvas');
