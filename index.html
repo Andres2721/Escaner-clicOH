@@ -4,7 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Escáner de guías clicOH</title>
+  <meta name="theme-color" content="#1F3864">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Escáner">
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -37,6 +47,17 @@
     .pie button { max-width: 520px; display: block; margin: 0 auto; font-size: 16px; padding: 14px; }
     .vacio { color: #777; font-size: 14px; justify-content: center; }
     .total { margin-top: 10px; font-size: 18px; font-weight: bold; color: #1F3864; }
+    .alertas { border-left: 6px solid #C00000; }
+    .alertas.nueva { animation: parpadeo 1s ease-in-out 4; }
+    @keyframes parpadeo { 50% { background: #fde2e1; } }
+    #instalar { display: none; background: #FFC000; color: #1F3864; margin-top: 12px; font-size: 16px; }
+    #ayudaInstalar { display: none; }
+    .alertas li { display: block; }
+    .alertas li .fila1 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .alertas li button { width: auto; padding: 6px 12px; font-size: 14px; background: #1F3864; color: #fff; }
+    .barra { height: 8px; background: #eee; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+    .barra div { height: 100%; background: #C00000; }
+    .barra.ok div { background: #11632f; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
     .modal .caja { background: #fff; border-radius: 16px; padding: 22px; max-width: 420px; width: 100%; text-align: center; }
     .gigante { font-size: 34px; font-weight: 900; color: #1F3864; line-height: 1.15; margin: 10px 0; text-transform: uppercase; }
@@ -53,6 +74,18 @@
 
 <!-- ================= MODO ALIADO ================= -->
 <main id="app">
+  <button id="instalar">📲 Instalar el escáner como app</button>
+  <button id="btnNotif" style="display:none;margin-top:12px;background:#C00000;font-size:16px">🔔 Activar notificaciones de devoluciones</button>
+  <div class="card" id="ayudaInstalar">
+    <strong>📲 Tenlo como app en tu celular</strong>
+    <div class="ayuda"><b>Android (Chrome):</b> toca ⋮ arriba a la derecha → <b>Agregar a pantalla principal</b> o <b>Instalar aplicación</b>.<br>
+    <b>iPhone (Safari):</b> toca Compartir ⬆️ → <b>Agregar a inicio</b>.<br>Después ábrelo siempre desde el ícono <b>Escáner</b>.</div>
+  </div>
+  <div class="card alertas" id="cardAlertas" style="display:none">
+    <strong>🔔 Devoluciones por recoger</strong>
+    <div class="ayuda">Points que te reportaron devoluciones. Toca "Ir" para escanear en ese CP.</div>
+    <ul id="listaAlertas"></ul>
+  </div>
   <div class="card">
     <label for="cedula">Cédula del aliado</label>
     <input id="cedula" inputmode="numeric" placeholder="Ej: 1012345678">
@@ -96,6 +129,14 @@
 </main>
 
 <div class="pie" id="pie"><button id="btnSubir" class="sec">☁️ Guardar avance en Drive (0)</button></div>
+
+<!-- Aviso al abrir: devoluciones por recoger -->
+<div class="modal" id="modalAlertas"><div class="caja">
+  <div style="font-size:52px">🔔</div>
+  <div class="gigante" style="color:#C00000;font-size:26px">Tienes devoluciones por recoger</div>
+  <ul id="modalLista" style="text-align:left;max-height:50vh"></ul>
+  <button id="btnCerrarAlertas" style="margin-top:14px;font-size:18px;padding:14px">Entendido</button>
+</div></div>
 
 <!-- Entrega en bodega -->
 <div class="modal" id="modalEntrega"><div class="caja">
@@ -177,6 +218,7 @@
 
   // Cada guía: { codigo, point, t (hora escaneo), subida, entregada, receptor, tEntrega }
   let guias = [];
+  var alertas = []; // devoluciones reportadas por los Points y asignadas a este aliado
   try { guias = JSON.parse(leer('clicoh_guias', '[]')) || []; } catch (e) { guias = []; }
   // Guías que quedaron sin cargar en la versión anterior del escáner
   try {
@@ -186,6 +228,14 @@
   } catch (e) {}
   // Conserva 3 días de historial; las no entregadas nunca se borran
   guias = guias.filter(g => !g.entregada || Date.now() - g.t < 3 * 864e5);
+  // REINICIO: al cambiar esta fecha, cada celular borra sus guías guardadas la próxima vez que abra el escáner
+  // (cédula, nombre, Point y tipo se conservan). El Drive no se toca.
+  const REINICIO = '2026-11-09';
+  if (leer('clicoh_reinicio', '') !== REINICIO) {
+    guias = [];
+    try { localStorage.removeItem('clicoh_guias'); localStorage.removeItem('clicoh_pendientes'); } catch (e) {}
+    guardar('clicoh_reinicio', REINICIO);
+  }
 
   let flujo = null, activo = false, ultimo = '', ultimoT = 0, ocupado = false, pausado = false, receptorActual = '';
 
@@ -195,6 +245,7 @@
 
   function pintar() {
     guardar('clicoh_guias', JSON.stringify(guias));
+    pintarAlertas();
     const hoy = deHoy(), pend = porEntregar();
     $('contador').textContent = pend.length;
 
@@ -368,6 +419,120 @@
 
   $('btnManual').addEventListener('click', () => { agregar($('manual').value); $('manual').value = ''; $('manual').focus(); });
   $('manual').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btnManual').click(); } });
+
+  // ---------- Devoluciones reportadas por los Points (asignadas a este aliado en la base) ----------
+  const normCP = v => { const t = String(v || '').trim(); const d = t.match(/\d+/g); return d ? String(Number(d.join(''))) : t.toLowerCase(); };
+  function escaneadasEn(a) {
+    const cp = normCP(a.cp), desde = (a.reporteMs || 0) - 3600000;
+    const local = guias.filter(g => normCP(g.point) === cp && g.t >= desde).length;
+    return Math.max(local, a.escaneadas || 0);
+  }
+  function pintarAlertas() {
+    const ul = $('listaAlertas'); if (!ul) return;
+    $('cardAlertas').style.display = alertas.length ? 'block' : 'none';
+    ul.innerHTML = '';
+    alertas.forEach(a => {
+      const n = escaneadasEn(a), tot = a.devoluciones || 0, listo = n >= tot && tot > 0;
+      const li = document.createElement('li');
+      li.innerHTML = '<div class="fila1"><span><b>CP ' + a.cp + '</b> · ' + tot + ' devoluciones<br><small>Ruta ' + a.fechaRuta + ' · ' +
+        (listo ? '✅ completas' : n + ' de ' + tot + ' escaneadas') + '</small></span></div>' +
+        '<div class="barra' + (listo ? ' ok' : '') + '"><div style="width:' + Math.min(100, tot ? n * 100 / tot : 0) + '%"></div></div>';
+      if (!listo) {
+        const b = document.createElement('button'); b.textContent = 'Ir';
+        b.onclick = () => { $('point').value = 'CP ' + a.cp; guardar('clicoh_point', $('point').value); aviso('📍 Escaneando en CP ' + a.cp, 'ok'); window.scrollTo(0, $('btnCam').offsetTop - 80); };
+        li.querySelector('.fila1').append(b);
+      }
+      ul.append(li);
+    });
+  }
+  let avisoMostrado = false; // el aviso grande sale al abrir el escáner y cada vez que llega una nueva
+  function mostrarAvisoAlertas(nuevas) {
+    const ul = $('modalLista'); ul.innerHTML = '';
+    alertas.forEach(a => {
+      const n = escaneadasEn(a), esNueva = nuevas.some(x => x.cp === a.cp && x.reporteMs === a.reporteMs);
+      const li = document.createElement('li');
+      li.innerHTML = '<span><b>CP ' + a.cp + '</b> · ' + a.devoluciones + ' devoluciones' + (esNueva ? ' <b style="color:#C00000">NUEVA</b>' : '') +
+        '<br><small>Ruta ' + a.fechaRuta + ' · ' + n + ' de ' + a.devoluciones + ' escaneadas</small></span>';
+      const b = document.createElement('button'); b.textContent = 'Ir';
+      b.onclick = () => { $('point').value = 'CP ' + a.cp; guardar('clicoh_point', $('point').value); $('modalAlertas').style.display = 'none'; aviso('📍 Escaneando en CP ' + a.cp, 'ok'); };
+      li.append(b); ul.append(li);
+    });
+    $('modalAlertas').style.display = 'flex';
+  }
+  async function cargarAlertas() {
+    const a = datosAliado();
+    if (!a.cedula && !a.nombre) return;
+    try {
+      const u = URL_DRIVE + '?accion=pendientes&cedula=' + encodeURIComponent(a.cedula) + '&nombre=' + encodeURIComponent(a.nombre);
+      const r = await (await fetch(u)).json();
+      if (r.ok) {
+        alertas = r.alertas || [];
+        const vistas = JSON.parse(leer('clicoh_alertas_vistas', '[]') || '[]');
+        const claves = alertas.map(x => x.cp + '|' + x.reporteMs);
+        const nuevas = alertas.filter((x, i) => vistas.indexOf(claves[i]) < 0);
+        guardar('clicoh_alertas_vistas', JSON.stringify(claves));
+        pintarAlertas();
+        if (alertas.length && (nuevas.length || !avisoMostrado)) mostrarAvisoAlertas(nuevas);
+        avisoMostrado = true;
+        if (nuevas.length) {
+          aviso('🔔 Nueva devolución por recoger: ' + nuevas.map(x => 'CP ' + x.cp + ' (' + x.devoluciones + ')').join(', '), 'err');
+          [0, 350, 700].forEach(t => setTimeout(() => pitido(true), t));
+          if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
+          const c = $('cardAlertas'); c.classList.remove('nueva'); void c.offsetWidth; c.classList.add('nueva');
+          window.scrollTo(0, 0);
+        }
+      }
+    } catch (e) { /* sin señal: se reintenta más tarde */ }
+  }
+  $('btnCerrarAlertas').onclick = () => { $('modalAlertas').style.display = 'none'; };
+  ['cedula', 'nombre'].forEach(c => $(c).addEventListener('change', cargarAlertas));
+  $('btnSubir').addEventListener('click', () => setTimeout(cargarAlertas, 4000));
+  $('btnEntregar').addEventListener('click', () => setTimeout(cargarAlertas, 5000));
+  setInterval(cargarAlertas, 120000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { avisoMostrado = false; cargarAlertas(); } });
+  cargarAlertas();
+
+  // ---------- Modo app: instalar en la pantalla del celular ----------
+  const enApp = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  let pedirInstalar = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedirInstalar = e; $('instalar').style.display = 'block'; $('ayudaInstalar').style.display = 'none'; });
+  $('instalar').onclick = async () => { if (!pedirInstalar) return; pedirInstalar.prompt(); await pedirInstalar.userChoice; pedirInstalar = null; $('instalar').style.display = 'none'; };
+  window.addEventListener('appinstalled', () => { $('instalar').style.display = 'none'; $('ayudaInstalar').style.display = 'none'; });
+  if (!enApp && !/[?&]bodega/.test(location.search)) setTimeout(() => { if (!pedirInstalar) $('ayudaInstalar').style.display = 'block'; }, 1500);
+
+  // ---------- Notificaciones al celular (Firebase): avisan aunque el escáner esté cerrado ----------
+  let mensajeria = null;
+  const PUSH_OK = typeof firebase !== 'undefined' && self.FIREBASE_CONFIG && self.FIREBASE_CONFIG.apiKey && self.VAPID_KEY &&
+    'serviceWorker' in navigator && 'Notification' in window && !/[?&]bodega/.test(location.search);
+  if (PUSH_OK) {
+    try { firebase.initializeApp(self.FIREBASE_CONFIG); mensajeria = firebase.messaging(); mensajeria.onMessage(() => cargarAlertas()); }
+    catch (e) { mensajeria = null; }
+  }
+  async function activarNotificaciones(preguntar) {
+    if (!mensajeria) return;
+    const a = datosAliado();
+    if (!a.cedula && !a.nombre) { if (preguntar) { aviso('Escribe tu cédula y nombre antes de activar las notificaciones', 'err'); pitido(false); } return; }
+    if (Notification.permission !== 'granted') {
+      if (!preguntar) { $('btnNotif').style.display = Notification.permission === 'denied' ? 'none' : 'block'; return; }
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') { aviso('Para recibir avisos debes tocar "Permitir" en las notificaciones', 'err'); return; }
+    }
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+      const token = await mensajeria.getToken({ vapidKey: self.VAPID_KEY, serviceWorkerRegistration: reg });
+      const firma = token + '|' + a.cedula + '|' + a.nombre + '|' + new Date().toDateString();
+      if (leer('clicoh_push', '') !== firma) { await enviar({ accion: 'dispositivo', token: token, cedula: a.cedula, nombre: a.nombre }); guardar('clicoh_push', firma); }
+      $('btnNotif').style.display = 'none';
+      if (preguntar) { aviso('🔔 Notificaciones activadas: te avisaremos cuando un Point tenga devoluciones', 'ok'); pitido(true); }
+    } catch (e) { if (preguntar) aviso('No se pudieron activar las notificaciones (' + e.message + ')', 'err'); }
+  }
+  $('btnNotif').onclick = () => activarNotificaciones(true);
+  ['cedula', 'nombre'].forEach(c => $(c).addEventListener('change', () => activarNotificaciones(false)));
+  activarNotificaciones(false);
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data === 'recargarAlertas') cargarAlertas(); });
+  const limpiarIcono = () => { if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {}); };
+  limpiarIcono(); document.addEventListener('visibilitychange', () => { if (!document.hidden) limpiarIcono(); });
 
   pintar();
   if (porEntregar().length) aviso('Tienes ' + porEntregar().length + ' guías por entregar en bodega', 'dup');
