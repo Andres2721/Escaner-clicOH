@@ -163,7 +163,7 @@
 <script>
   // ⚠️ URL de la aplicación web de Apps Script (termina en /exec)
   const URL_DRIVE = 'https://script.google.com/macros/s/AKfycbzNByRUWn1B9vepbYSYaXcicGC7i36A1PzN1wQoi8jcuA-YUnqvPr-L1fhIcQIJieMK/exec';
-  const REGLA_GUIA = /^\d{13}$/;           // etiqueta clicOH: QR con 13 números
+  const REGLA_GUIA = /^\d{8,20}$/;      // etiqueta clicOH: el QR trae SOLO números (cualquier largo). Otras etiquetas (p. ej. MeLi) traen letras o datos y se rechazan
   const PREFIJO_BODEGA = 'CLICOH-RECIBE|';  // QR personal de quien recibe en bodega
 
   const $ = id => document.getElementById(id);
